@@ -132,16 +132,26 @@ so the overridden getter on the child's prototype is picked up automatically.
 No re-annotation is needed (and attempting it would throw
 "field is already annotated").
 
-## MobX Fix Options
+## Fix
 
-1. **Skip decorated descriptors in `make_`**: When walking the prototype chain,
-   detect that a descriptor's getter is the replacement from `decorate_20223_`
-   and skip it, continuing to walk up to find the original getter.
+Applied in `mobx/packages/mobx/src/types/computedannotation.ts`, in the
+`decorate_20223_` function's `addInitializer`:
 
-2. **Lazy factory overwrites `values_`**: When `materializeLazyComputed_`
-   creates a `ComputedValue`, it should overwrite any existing entry in
-   `values_` for the same key (not just insert if missing).
+```diff
+ addInitializer(function () {
+     const adm: ObservableObjectAdministration = asObservableObject(this)[$mobx]
+     const target = this
++    adm.values_.delete(key)
+     ;(adm.lazyComputedKeys_ ??= new Map()).set(key, () => {
+```
 
-3. **Eager overwrite on lazy registration**: When the `@computed` lazy factory
-   is registered, also delete the existing entry from `values_` so the lazy
-   path is taken on next access.
+One line: `adm.values_.delete(key)`. This removes the stale cyclic
+`ComputedValue` that `makeObservable` created when it walked the prototype
+chain and found the replacement getter. After deletion, `getObservablePropValue_`
+falls through to `materializeLazyComputed_`, which creates the correct
+`ComputedValue` using the original getter.
+
+This restores the behavior from 6.15.x where the `addInitializer` eagerly
+overwrote the stale entry — just doing it via deletion + lazy factory instead.
+
+All 1044 existing MobX tests pass with this fix.

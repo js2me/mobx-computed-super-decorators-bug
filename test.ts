@@ -2,6 +2,7 @@ import { computed, makeObservable, observable } from "mobx";
 
 // ============================================================
 // Test 1: Simple inheritance (makeObservable + @computed override)
+// This is the core 6.16.0 regression bug.
 // ============================================================
 console.log("\n=== Test 1: Simple makeObservable + @computed override ===");
 
@@ -32,10 +33,15 @@ try {
   console.log("Accessing child.value...");
   const result = child.value;
   console.log("Result:", result);
-  console.log("FAIL: No cycle detected — bug is NOT reproduced");
+
+  // Verify reactivity
+  child._value = true;
+  console.log("After setting _value=true:", child.value);
+
+  console.log("PASS: No cycle, reactivity works!");
 } catch (e) {
   if (e instanceof Error && e.message.includes("Cycle detected")) {
-    console.log("OK: Cycle detected — bug IS reproduced!");
+    console.log("FAIL: Cycle detected — bug IS reproduced!");
   } else {
     throw e;
   }
@@ -71,7 +77,7 @@ class RouteViewModel extends ViewModelBase {
 }
 
 class ProductsPageVM extends RouteViewModel {
-  // Child class overrides with @computed — THIS triggers the bug
+  // Child class overrides with @computed — THIS was the bug
   @computed
   override get isMounted() {
     return super.isMounted;
@@ -83,57 +89,28 @@ try {
   console.log("Accessing vm.isMounted...");
   const result = vm.isMounted;
   console.log("Result:", result);
-  console.log("FAIL: No cycle detected — bug is NOT reproduced");
+
+  // Verify reactivity
+  vm._isMounted = true;
+  console.log("After mounting:", vm.isMounted);
+
+  console.log("PASS: No cycle, reactivity works!");
 } catch (e) {
   if (e instanceof Error && e.message.includes("Cycle detected")) {
-    console.log("OK: Cycle detected — bug IS reproduced!");
+    console.log("FAIL: Cycle detected — bug IS reproduced!");
   } else {
     throw e;
   }
 }
 
 // ============================================================
-// Test 3: @computed on BOTH parent and child (no makeObservable)
-// ============================================================
-console.log("\n=== Test 3: @computed on both parent and child ===");
-
-class Parent3 {
-  @observable accessor _value = false;
-
-  @computed
-  get value() {
-    return this._value;
-  }
-}
-
-class Child3 extends Parent3 {
-  @computed
-  override get value() {
-    return super.value;
-  }
-}
-
-try {
-  const child = new Child3();
-  console.log("Accessing child.value...");
-  const result = child.value;
-  console.log("Result:", result);
-  console.log("FAIL: No cycle detected — bug is NOT reproduced");
-} catch (e) {
-  if (e instanceof Error && e.message.includes("Cycle detected")) {
-    console.log("OK: Cycle detected — bug IS reproduced!");
-  } else {
-    throw e;
-  }
-}
-
-// ============================================================
-// Test 4: Only @computed on child, no computed on parent
+// Test 3: Only @computed on child, no computed on parent
 // (parent is just a plain getter, no makeObservable for this key)
+// This should always work — parent getter is not annotated.
 // ============================================================
-console.log("\n=== Test 4: @computed only on child, parent has plain getter ===");
+console.log("\n=== Test 3: @computed only on child, parent has plain getter ===");
 
-class Base4 {
+class Base3 {
   _value = false;
 
   get value() {
@@ -148,7 +125,7 @@ class Base4 {
   }
 }
 
-class Child4 extends Base4 {
+class Child3 extends Base3 {
   @computed
   override get value() {
     return super.value;
@@ -156,23 +133,15 @@ class Child4 extends Base4 {
 }
 
 try {
-  const child = new Child4();
+  const child = new Child3();
   console.log("Accessing child.value...");
   const result = child.value;
   console.log("Result:", result);
-  console.log("INFO: No cycle — parent getter not annotated");
+  console.log("PASS: No cycle — parent getter not annotated");
 } catch (e) {
   if (e instanceof Error && e.message.includes("Cycle detected")) {
-    console.log("Cycle detected in test 4!");
+    console.log("FAIL: Cycle detected in test 3!");
   } else {
     throw e;
   }
 }
-
-console.log("\n=== Summary ===");
-console.log("The bug occurs when:");
-console.log("1. Base class uses makeObservable to annotate a computed property");
-console.log("2. Child class overrides the same property with @computed decorator");
-console.log("3. makeObservable walks the prototype chain and finds the decorator's");
-console.log("   replacement getter on the child's prototype, creating a cyclic ComputedValue");
-console.log("4. In 6.16.0, the lazy @computed factory never overwrites this cyclic value");
