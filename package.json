@@ -1,0 +1,12 @@
+{
+  "name": "mobx-bug-reproduce",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "tsx test.ts"
+  },
+  "dependencies": {
+    "mobx": "6.16.0",
+    "tsx": "^4.19.0"
+  }
+}
