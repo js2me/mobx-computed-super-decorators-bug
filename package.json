@@ -6,7 +6,7 @@
     "test": "tsx test.ts"
   },
   "dependencies": {
-    "mobx": "^6.16.0",
+    "mobx": "file:../mobx/packages/mobx",
     "tsx": "^4.19.0"
   }
 }

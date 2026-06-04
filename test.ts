@@ -1,10 +1,9 @@
 import { computed, makeObservable, observable } from "mobx";
 
 // ============================================================
-// Test 1: Simple inheritance (makeObservable + @computed override)
-// This is the core 6.16.0 regression bug.
+// Test 1: makeObservable + @computed override (6.16.0 regression)
 // ============================================================
-console.log("\n=== Test 1: Simple makeObservable + @computed override ===");
+console.log("\n=== Test 1: makeObservable + @computed override ===");
 
 class Base1 {
   _value = false;
@@ -30,26 +29,15 @@ class Child1 extends Base1 {
 
 try {
   const child = new Child1();
-  console.log("Accessing child.value...");
   const result = child.value;
-  console.log("Result:", result);
-
-  // Verify reactivity
   child._value = true;
-  console.log("After setting _value=true:", child.value);
-
-  console.log("PASS: No cycle, reactivity works!");
+  console.log(result === false && child.value === true ? "PASS" : "FAIL: wrong values");
 } catch (e) {
-  if (e instanceof Error && e.message.includes("Cycle detected")) {
-    console.log("FAIL: Cycle detected — bug IS reproduced!");
-  } else {
-    throw e;
-  }
+  console.log("FAIL:", (e as Error).message.split("\n")[0]);
 }
 
 // ============================================================
 // Test 2: With intermediate class (like RouteViewModel)
-// This more closely matches the real ProductsPageVM scenario
 // ============================================================
 console.log("\n=== Test 2: With intermediate class ===");
 
@@ -69,15 +57,12 @@ class ViewModelBase {
 }
 
 class RouteViewModel extends ViewModelBase {
-  // Intermediate class overrides isMounted WITHOUT @computed decorator
-  // (uses plain getter, like the real RouteViewModel)
   override get isMounted() {
-    return super.isMounted && true; // simulates && this.route.isOpened
+    return super.isMounted && true;
   }
 }
 
 class ProductsPageVM extends RouteViewModel {
-  // Child class overrides with @computed — THIS was the bug
   @computed
   override get isMounted() {
     return super.isMounted;
@@ -86,46 +71,29 @@ class ProductsPageVM extends RouteViewModel {
 
 try {
   const vm = new ProductsPageVM();
-  console.log("Accessing vm.isMounted...");
   const result = vm.isMounted;
-  console.log("Result:", result);
-
-  // Verify reactivity
   vm._isMounted = true;
-  console.log("After mounting:", vm.isMounted);
-
-  console.log("PASS: No cycle, reactivity works!");
+  console.log(result === false && vm.isMounted === true ? "PASS" : "FAIL: wrong values");
 } catch (e) {
-  if (e instanceof Error && e.message.includes("Cycle detected")) {
-    console.log("FAIL: Cycle detected — bug IS reproduced!");
-  } else {
-    throw e;
-  }
+  console.log("FAIL:", (e as Error).message.split("\n")[0]);
 }
 
 // ============================================================
-// Test 3: Only @computed on child, no computed on parent
-// (parent is just a plain getter, no makeObservable for this key)
-// This should always work — parent getter is not annotated.
+// Test 3: @computed on BOTH parent and child (pre-existing bug)
+// This was broken in ALL versions before this fix.
 // ============================================================
-console.log("\n=== Test 3: @computed only on child, parent has plain getter ===");
+console.log("\n=== Test 3: @computed on both parent and child ===");
 
-class Base3 {
-  _value = false;
+class Parent3 {
+  @observable accessor _value = false;
 
+  @computed
   get value() {
     return this._value;
   }
-
-  constructor() {
-    makeObservable(this, {
-      _value: observable,
-    });
-    // Note: `value` is NOT annotated as computed in the base class
-  }
 }
 
-class Child3 extends Base3 {
+class Child3 extends Parent3 {
   @computed
   override get value() {
     return super.value;
@@ -134,14 +102,68 @@ class Child3 extends Base3 {
 
 try {
   const child = new Child3();
-  console.log("Accessing child.value...");
   const result = child.value;
-  console.log("Result:", result);
-  console.log("PASS: No cycle — parent getter not annotated");
+  child._value = true;
+  console.log(result === false && child.value === true ? "PASS" : "FAIL: wrong values");
 } catch (e) {
-  if (e instanceof Error && e.message.includes("Cycle detected")) {
-    console.log("FAIL: Cycle detected in test 3!");
-  } else {
-    throw e;
+  console.log("FAIL:", (e as Error).message.split("\n")[0]);
+}
+
+// ============================================================
+// Test 4: @computed on both with super.value + 1
+// ============================================================
+console.log("\n=== Test 4: @computed override with super.value + 1 ===");
+
+class Parent4 {
+  @computed
+  get number() {
+    return 1;
   }
+}
+
+class Child4 extends Parent4 {
+  @computed
+  override get number() {
+    return super.number + 1;
+  }
+}
+
+try {
+  const child = new Child4();
+  console.log(child.number === 2 ? "PASS" : "FAIL: got " + child.number);
+} catch (e) {
+  console.log("FAIL:", (e as Error).message.split("\n")[0]);
+}
+
+// ============================================================
+// Test 5: Three levels of @computed inheritance
+// ============================================================
+console.log("\n=== Test 5: Three levels of @computed inheritance ===");
+
+class GrandParent {
+  @computed
+  get number() {
+    return 1;
+  }
+}
+
+class Parent5 extends GrandParent {
+  @computed
+  override get number() {
+    return super.number + 1;
+  }
+}
+
+class Child5 extends Parent5 {
+  @computed
+  override get number() {
+    return super.number + 1;
+  }
+}
+
+try {
+  const child = new Child5();
+  console.log(child.number === 3 ? "PASS" : "FAIL: got " + child.number);
+} catch (e) {
+  console.log("FAIL:", (e as Error).message.split("\n")[0]);
 }
